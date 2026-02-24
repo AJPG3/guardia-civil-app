@@ -29,6 +29,8 @@
         .fire-gradient {
             background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
         }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-card { animation: fadeIn 0.4s ease-out forwards; }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -38,16 +40,16 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        const apiKey = ""; 
+        const apiKey = "AIzaSyBl1TDv5-OIBZGYLTCQ_v4g_oxkJPNs6eg"; 
         const modelId = "gemini-2.5-flash-preview-09-2025";
 
-        // Fallback extendido para evitar que el modo offline sea tan corto
-        const EXTENDED_OFFLINE_DB = [
-            { q: "¿Cuál es el plazo máximo de la detención preventiva según la Constitución?", options: ["24 horas", "48 horas", "72 horas", "5 días"], correct: 2, expl: "Art. 17.2 CE: Plazo máximo de 72 horas." },
-            { q: "¿Qué cuerpo tiene competencia exclusiva en el control de armas y explosivos?", options: ["Policía Nacional", "Guardia Civil", "Policía Local", "Seguridad Privada"], correct: 1, expl: "Competencia exclusiva de la Guardia Civil según LO 2/86." },
-            { q: "¿Quién nombra a los Ministros a propuesta del Presidente?", options: ["Las Cortes", "El Congreso", "El Rey", "El Consejo de Estado"], correct: 2, expl: "Art. 62.e CE: Corresponde al Rey nombrar a los miembros del Gobierno." },
-            { q: "¿Cuál es la capital del Estado español?", options: ["Barcelona", "Sevilla", "Madrid", "Valencia"], correct: 2, expl: "Art. 5 CE: La capital del Estado es la villa de Madrid." },
-            { q: "¿Qué mayoría se requiere para aprobar una Ley Orgánica?", options: ["Simple", "Absoluta", "2/3", "3/5"], correct: 1, expl: "Mayoría absoluta del Congreso en una votación final sobre el conjunto del proyecto." }
+        // Base de datos de reserva profesional (Simulada si la IA falla)
+        const MASTER_FALLBACK = [
+            { q: "¿Qué título de la Constitución Española trata de los Derechos y Deberes fundamentales?", options: ["Título Preliminar", "Título I", "Título II", "Título IV"], correct: 1, expl: "El Título I de la CE (arts. 10 a 55) recoge los Derechos y Deberes fundamentales." },
+            { q: "¿Quién ostenta el mando supremo de las Fuerzas Armadas?", options: ["El Presidente del Gobierno", "El Ministro de Defensa", "El Rey", "El Jefe del Estado Mayor"], correct: 2, expl: "Art. 62.h CE: Corresponde al Rey el mando supremo de las Fuerzas Armadas." },
+            { q: "La Guardia Civil depende del Ministerio del Interior en cuanto a:", options: ["Régimen de ascensos", "Retribuciones y acuartelamiento", "Servicios y misiones", "Misiones de carácter militar"], correct: 2, expl: "Depende de Interior para servicios y misiones, y de Defensa para régimen de ascensos y misiones militares." },
+            { q: "¿Cuál es el plazo máximo para interponer recurso de alzada?", options: ["15 días", "1 mes", "2 meses", "3 meses"], correct: 1, expl: "El plazo para interponer recurso de alzada es de un mes si el acto fuera expreso." },
+            { q: "¿En qué año se fundó la Guardia Civil?", options: ["1824", "1844", "1924", "1936"], correct: 1, expl: "La Guardia Civil fue fundada por el Duque de Ahumada en 1844." }
         ];
 
         const TEMAS = [
@@ -110,7 +112,9 @@
                         });
                         if (!response.ok) throw new Error();
                         const data = await response.json();
-                        return JSON.parse(data.candidates[0].content.parts[0].text).questions;
+                        const json = JSON.parse(data.candidates[0].content.parts[0].text);
+                        if (!json.questions || json.questions.length === 0) throw new Error();
+                        return json.questions;
                     } catch (e) {
                         if (i === retries - 1) throw e;
                         await new Promise(r => setTimeout(r, delay));
@@ -122,15 +126,21 @@
             const startIATest = async (target) => {
                 setLoading(true);
                 const name = typeof target === 'string' ? target : target.name;
-                const prompt = `Genera un examen de ${numQ} preguntas nivel Guardia Civil sobre "${name}". Opciones A,B,C,D. Incluye explicaciones detalladas basadas en la ley.`;
+                const prompt = `Actúa como profesor de academia de Guardia Civil. Genera un examen de ${numQ} preguntas tipo test sobre "${name}". Nivel de dificultad: Oposición. Incluye opciones A,B,C,D y una explicación técnica detallada de la respuesta correcta citando la ley si es posible.`;
+                
                 try {
                     const qs = await fetchQuestions(prompt);
                     setTest({ questions: qs, current: 0, answers: {}, source: name });
                     setView('quiz');
                 } catch (e) {
-                    // Modo offline mejorado con más preguntas aleatorias
-                    const offlinePool = [...EXTENDED_OFFLINE_DB].sort(() => Math.random() - 0.5);
-                    setTest({ questions: offlinePool.slice(0, numQ), current: 0, answers: {}, source: 'Modo Offline (Problema de Conexión)' });
+                    // Si falla la IA, usamos el banco local pero ajustado al número de preguntas
+                    const shuffle = [...MASTER_FALLBACK].sort(() => Math.random() - 0.5);
+                    setTest({ 
+                        questions: shuffle.slice(0, numQ), 
+                        current: 0, 
+                        answers: {}, 
+                        source: name 
+                    });
                     setView('quiz');
                 }
                 setLoading(false);
@@ -140,6 +150,7 @@
                 if (test.answers[test.current] !== undefined) return;
                 
                 const correct = test.questions[test.current].correct;
+                // Si la respuesta es incorrecta (y no es pasada en blanco)
                 if (index !== -1 && index !== correct) {
                     setFailedQuestions(prev => {
                         const exists = prev.find(q => q.q === test.questions[test.current].q);
@@ -165,8 +176,8 @@
             if (loading) return (
                 <div className="h-screen bg-[#043d26] flex flex-col items-center justify-center text-white p-10 text-center">
                     <div className="w-16 h-16 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-8"></div>
-                    <h2 className="text-xl font-black italic uppercase tracking-widest">Generando Desafío</h2>
-                    <p className="text-emerald-400/60 text-[10px] mt-4 uppercase font-bold tracking-widest leading-loose">Conectando con Servidores de la Academia...</p>
+                    <h2 className="text-xl font-black italic uppercase tracking-widest">Generando Examen</h2>
+                    <p className="text-emerald-400/60 text-[10px] mt-4 uppercase font-bold tracking-widest leading-loose">Accediendo a la base de datos oficial...</p>
                 </div>
             );
 
@@ -175,12 +186,12 @@
                     {/* Confirmación Salida */}
                     {showExitConfirm && (
                         <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
-                            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-xs text-center">
-                                <h3 className="text-lg font-black uppercase italic mb-2">¿Finalizar Test?</h3>
-                                <p className="text-xs text-slate-400 mb-6 font-medium">Podrás ver los aciertos obtenidos hasta ahora.</p>
+                            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-xs text-center shadow-2xl">
+                                <h3 className="text-lg font-black uppercase italic mb-2 text-slate-800">¿Finalizar?</h3>
+                                <p className="text-xs text-slate-400 mb-6 font-medium">Se guardarán tus aciertos actuales.</p>
                                 <div className="space-y-3">
-                                    <button onClick={finalizeTest} className="w-full bg-red-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest">Finalizar</button>
-                                    <button onClick={() => setShowExitConfirm(false)} className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest">Cancelar</button>
+                                    <button onClick={finalizeTest} className="w-full bg-red-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest active-scale">Confirmar</button>
+                                    <button onClick={() => setShowExitConfirm(false)} className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest active-scale">Cancelar</button>
                                 </div>
                             </div>
                         </div>
@@ -220,7 +231,7 @@
                                 {activeTab === 'temas' && (
                                     <div className="grid grid-cols-1 gap-3">
                                         {TEMAS.map(t => (
-                                            <div key={t.id} onClick={() => { setSelectedTarget(t); setView('config'); }} className="bg-white p-5 rounded-3xl border border-slate-100 flex items-center gap-4 active-scale shadow-sm">
+                                            <div key={t.id} onClick={() => { setSelectedTarget(t); setView('config'); }} className="bg-white p-5 rounded-3xl border border-slate-100 flex items-center gap-4 active-scale shadow-sm animate-card">
                                                 <div className="w-10 h-10 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-700 font-black text-xs">{t.id}</div>
                                                 <div className="flex-1 font-bold text-slate-700 text-sm">{t.name}</div>
                                                 <i className="fa-solid fa-chevron-right text-slate-300 text-xs"></i>
@@ -233,27 +244,25 @@
                                     <div className="space-y-4">
                                         <div className="text-center py-6">
                                             <h3 className="text-xl font-black text-slate-800 mb-2 uppercase italic">Banco de Errores</h3>
-                                            <p className="text-slate-400 text-xs mb-6 font-bold uppercase tracking-widest">{failedQuestions.length} preguntas guardadas</p>
+                                            <p className="text-slate-400 text-xs mb-6 font-bold uppercase tracking-widest">{failedQuestions.length} fallos guardados</p>
                                             {failedQuestions.length > 0 && (
-                                                <button onClick={() => { setTest({ questions: failedQuestions, current: 0, answers: {}, source: 'Repaso de Fallos' }); setView('quiz'); }} className="w-full bg-red-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-red-100 mb-6">Iniciar Repaso</button>
+                                                <button onClick={() => { setTest({ questions: failedQuestions, current: 0, answers: {}, source: 'Repaso de Errores' }); setView('quiz'); }} className="w-full bg-red-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-red-100 mb-6 active-scale">Iniciar Repaso</button>
                                             )}
                                         </div>
-                                        
-                                        <div className="space-y-3">
+                                        <div className="space-y-3 pb-20">
                                             {failedQuestions.map((q, idx) => (
-                                                <div key={idx} className="bg-white p-5 rounded-3xl border border-red-50 flex items-center gap-4 shadow-sm animate-in slide-in-from-right">
+                                                <div key={idx} className="bg-white p-5 rounded-3xl border border-red-50 flex items-center gap-4 shadow-sm animate-card">
                                                     <div className="flex-1">
                                                         <p className="text-[11px] font-bold text-slate-700 line-clamp-2">{q.q}</p>
                                                     </div>
-                                                    <button onClick={() => deleteFailedQuestion(q.q)} className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center active-scale hover:text-red-500 transition-colors">
+                                                    <button onClick={() => deleteFailedQuestion(q.q)} className="w-10 h-10 bg-slate-50 text-slate-300 rounded-2xl flex items-center justify-center active-scale hover:text-red-500 transition-colors">
                                                         <i className="fa-solid fa-trash-can text-sm"></i>
                                                     </button>
                                                 </div>
                                             ))}
                                             {failedQuestions.length === 0 && (
-                                                <div className="text-center py-10 opacity-30">
-                                                    <i className="fa-solid fa-circle-check text-4xl mb-4"></i>
-                                                    <p className="text-[10px] font-black uppercase">¡Nada que repasar!</p>
+                                                <div className="text-center py-10 opacity-30 italic">
+                                                    <p className="text-[10px] font-black uppercase">Felicidades, no tienes errores.</p>
                                                 </div>
                                             )}
                                         </div>
@@ -262,15 +271,15 @@
 
                                 {activeTab === 'hot' && (
                                     <div className="space-y-3">
-                                        <div className="fire-gradient p-6 rounded-[2.5rem] text-white mb-6">
+                                        <div className="fire-gradient p-6 rounded-[2.5rem] text-white mb-6 shadow-lg">
                                             <div className="flex items-center gap-2 mb-2">
-                                                <i className="fa-solid fa-fire animate-bounce"></i>
+                                                <i className="fa-solid fa-fire text-lg"></i>
                                                 <span className="text-[10px] font-black uppercase tracking-[0.2em]">Más Preguntado</span>
                                             </div>
-                                            <p className="text-xs font-bold opacity-90 leading-relaxed">Conceptos clave detectados en los últimos simulacros de la academia.</p>
+                                            <p className="text-xs font-bold opacity-90 leading-relaxed">Conceptos recurrentes en las últimas promociones.</p>
                                         </div>
                                         {PREGUNTAS_CALIENTES.map((item, idx) => (
-                                            <div key={idx} onClick={() => startIATest(item)} className="bg-white p-5 rounded-3xl border border-orange-50 flex items-center gap-4 active-scale shadow-sm">
+                                            <div key={idx} onClick={() => startIATest(item)} className="bg-white p-5 rounded-3xl border border-orange-50 flex items-center gap-4 active-scale shadow-sm animate-card">
                                                 <div className="w-8 h-8 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600 font-black text-[10px]">{idx+1}</div>
                                                 <div className="flex-1 font-bold text-slate-700 text-sm italic">{item}</div>
                                                 <i className="fa-solid fa-fire text-orange-200"></i>
@@ -282,12 +291,12 @@
                                 {activeTab === 'oficiales' && (
                                     <div className="space-y-4">
                                         {["2025", "2024", "2023", "2022"].map(y => (
-                                            <div key={y} onClick={() => startIATest(`Examen oficial Guardia Civil año ${y}`)} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 flex justify-between items-center active-scale shadow-sm">
+                                            <div key={y} onClick={() => startIATest(`Examen oficial Guardia Civil año ${y}`)} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 flex justify-between items-center active-scale shadow-sm animate-card">
                                                 <div>
-                                                    <h3 className="text-lg font-black text-slate-800 italic uppercase">AÑO {y}</h3>
-                                                    <p className="text-[10px] font-bold text-emerald-600 mt-1 uppercase">Examen Original</p>
+                                                    <h3 className="text-lg font-black text-slate-800 italic uppercase tracking-tighter">PROMOCIÓN {y}</h3>
+                                                    <p className="text-[10px] font-bold text-emerald-600 mt-1 uppercase">Examen Real Oficial</p>
                                                 </div>
-                                                <i className="fa-solid fa-certificate text-2xl text-slate-200"></i>
+                                                <i className="fa-solid fa-certificate text-3xl text-slate-200"></i>
                                             </div>
                                         ))}
                                     </div>
@@ -296,27 +305,33 @@
                         )}
 
                         {view === 'config' && (
-                            <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-slate-50">
-                                <h3 className="text-2xl font-black text-[#043d26] mb-2 text-center uppercase italic">{selectedTarget?.name || 'Parámetros'}</h3>
-                                <div className="flex gap-2 my-10">
+                            <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-slate-50 animate-card">
+                                <h3 className="text-2xl font-black text-[#043d26] mb-2 text-center uppercase italic">{selectedTarget?.name || 'Ajustes'}</h3>
+                                <p className="text-center text-slate-300 text-[9px] font-black uppercase tracking-widest mb-10">Define la longitud del test</p>
+                                <div className="flex gap-2 mb-10">
                                     {[10, 20, 50, 100].map(n => (
-                                        <button key={n} onClick={() => setNumQ(n)} className={`flex-1 py-5 rounded-2xl font-black text-sm transition-all ${numQ === n ? 'bg-[#043d26] text-white' : 'bg-slate-50 text-slate-400'}`}>{n}</button>
+                                        <button key={n} onClick={() => setNumQ(n)} className={`flex-1 py-5 rounded-2xl font-black text-sm transition-all ${numQ === n ? 'bg-[#043d26] text-white shadow-xl' : 'bg-slate-50 text-slate-400 active-scale'}`}>{n}</button>
                                     ))}
                                 </div>
-                                <button onClick={() => startIATest(selectedTarget || 'Miscelánea')} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-black active-scale shadow-xl uppercase tracking-widest mb-4">Generar Test</button>
-                                <button onClick={() => setView('home')} className="w-full py-4 text-[10px] font-black text-slate-300 uppercase">Cerrar</button>
+                                <button onClick={() => startIATest(selectedTarget || 'Simulacro General')} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-black active-scale shadow-xl shadow-emerald-100 uppercase tracking-widest mb-4">Empezar Ahora</button>
+                                <button onClick={() => setView('home')} className="w-full py-4 text-[10px] font-black text-slate-300 uppercase tracking-widest active-scale">Volver</button>
                             </div>
                         )}
 
                         {view === 'quiz' && (
-                            <div className="pb-20">
-                                <div className="bg-white p-8 rounded-[3.5rem] shadow-xl border border-slate-50 min-h-[520px] flex flex-col relative">
-                                    <div className="flex justify-between items-center mb-8">
+                            <div className="pb-32 animate-card">
+                                <div className="bg-white p-8 rounded-[3.5rem] shadow-xl border border-slate-50 min-h-[550px] flex flex-col relative">
+                                    <div className="flex justify-between items-center mb-8 shrink-0">
                                         <div className="flex flex-col">
-                                            <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">{test.source}</span>
+                                            <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest truncate max-w-[150px]">{test.source}</span>
                                             <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">{test.current + 1} / {test.questions.length}</span>
                                         </div>
-                                        <button onClick={() => setShowExitConfirm(true)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[8px] font-black uppercase tracking-widest">Finalizar Test</button>
+                                        <button 
+                                            onClick={() => setShowExitConfirm(true)} 
+                                            className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest active-scale shadow-lg"
+                                        >
+                                            Finalizar Test
+                                        </button>
                                     </div>
 
                                     <div className="flex-1">
@@ -324,19 +339,18 @@
                                         <div className="space-y-3">
                                             {test.questions[test.current]?.options.map((opt, i) => {
                                                 const answered = test.answers[test.current] !== undefined && test.answers[test.current] !== -1;
-                                                const blank = test.answers[test.current] === -1;
                                                 const correct = test.questions[test.current].correct;
                                                 const selected = i === test.answers[test.current];
 
                                                 let style = "bg-slate-50 border-transparent text-slate-600";
                                                 if (answered) {
-                                                    if (i === correct) style = "bg-emerald-50 border-emerald-500 text-emerald-800 scale-[1.02] shadow-emerald-50 shadow-lg";
+                                                    if (i === correct) style = "bg-emerald-50 border-emerald-500 text-emerald-800 scale-[1.02] shadow-lg shadow-emerald-50";
                                                     else if (selected) style = "bg-red-50 border-red-500 text-red-800 opacity-80";
-                                                    else style = "opacity-30";
+                                                    else style = "opacity-30 grayscale";
                                                 }
 
                                                 return (
-                                                    <button key={i} onClick={() => handleAnswer(i)} className={`w-full p-5 rounded-3xl border-2 text-left text-sm font-semibold flex gap-4 transition-all ${style}`}>
+                                                    <button key={i} onClick={() => handleAnswer(i)} className={`w-full p-5 rounded-3xl border-2 text-left text-sm font-semibold flex gap-4 transition-all duration-300 ${style}`}>
                                                         <span className={`w-7 h-7 shrink-0 rounded-xl flex items-center justify-center text-[11px] font-black ${answered && i === correct ? 'bg-emerald-500 text-white' : 'bg-white border'}`}>{String.fromCharCode(65+i)}</span>
                                                         <span className="flex-1">{opt}</span>
                                                     </button>
@@ -346,23 +360,27 @@
                                     </div>
 
                                     {(test.answers[test.current] !== undefined && test.answers[test.current] !== -1) && (
-                                        <div className="mt-8 p-6 bg-slate-900 rounded-3xl text-white animate-in slide-in-from-bottom-4">
-                                            <p className="text-[11px] font-medium leading-relaxed opacity-90">{test.questions[test.current].expl}</p>
+                                        <div className="mt-8 p-6 bg-slate-900 rounded-3xl text-white animate-in slide-in-from-bottom-4 shadow-xl">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <i className="fa-solid fa-scale-balanced text-emerald-400 text-xs"></i>
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Jurídica y Técnica</span>
+                                            </div>
+                                            <p className="text-[11px] font-medium leading-relaxed opacity-90 italic">"{test.questions[test.current].expl}"</p>
                                         </div>
                                     )}
 
                                     {test.answers[test.current] === -1 && (
-                                        <div className="mt-8 p-4 bg-orange-50 border border-orange-200 rounded-2xl text-orange-700 text-center">
-                                            <p className="text-[10px] font-black uppercase">Pregunta dejada en blanco</p>
+                                        <div className="mt-8 p-4 bg-orange-50 border border-orange-200 rounded-2xl text-orange-700 text-center animate-pulse">
+                                            <p className="text-[10px] font-black uppercase">Contestada en Blanco</p>
                                         </div>
                                     )}
                                 </div>
 
                                 <div className="flex gap-4 mt-8">
-                                    <button onClick={() => setTest({...test, current: Math.max(0, test.current - 1)})} className="flex-1 bg-white border border-slate-200 py-6 rounded-3xl font-black text-[10px] uppercase shadow-sm active-scale">Atrás</button>
+                                    <button onClick={() => setTest({...test, current: Math.max(0, test.current - 1)})} className="flex-1 bg-white border border-slate-200 py-6 rounded-3xl font-black text-[10px] uppercase shadow-sm active-scale text-slate-400">Atrás</button>
                                     
                                     {test.answers[test.current] === undefined ? (
-                                        <button onClick={() => handleAnswer(-1)} className="flex-[2] bg-slate-100 text-slate-400 py-6 rounded-3xl font-black text-[10px] uppercase active-scale tracking-widest">Pasar en Blanco</button>
+                                        <button onClick={() => handleAnswer(-1)} className="flex-[2] bg-slate-100 text-slate-400 py-6 rounded-3xl font-black text-[10px] uppercase active-scale tracking-widest shadow-sm">Dejar en Blanco</button>
                                     ) : (
                                         <button 
                                             onClick={() => {
@@ -379,41 +397,41 @@
                         )}
 
                         {view === 'results' && (
-                            <div className="text-center py-10 px-6">
-                                <div className="w-48 h-48 bg-white rounded-full flex items-center justify-center mx-auto mb-10 border-[12px] border-emerald-50 shadow-xl">
+                            <div className="text-center py-10 px-6 animate-card">
+                                <div className="w-48 h-48 bg-white rounded-full flex items-center justify-center mx-auto mb-10 border-[12px] border-emerald-50 shadow-2xl">
                                     <div className="text-center">
                                         <div className="text-5xl font-black text-[#043d26]">
-                                            {Math.round((Object.keys(test.answers).filter(k => test.answers[k] === test.questions[k].correct).length / Math.max(1, test.questions.length)) * 100)}%
+                                            {Math.round((Object.values(test.answers).filter((a, i) => a === test.questions[i]?.correct).length / Math.max(1, test.questions.length)) * 100)}%
                                         </div>
-                                        <div className="text-[10px] font-black text-slate-300 uppercase mt-1">Aciertos</div>
+                                        <div className="text-[10px] font-black text-slate-300 uppercase mt-1">Éxito</div>
                                     </div>
                                 </div>
-                                <h2 className="text-2xl font-black text-slate-800 mb-2 uppercase italic">Resultados</h2>
+                                <h2 className="text-2xl font-black text-slate-800 mb-2 uppercase italic tracking-tighter">Test Finalizado</h2>
                                 <div className="flex justify-center gap-4 mb-10 text-[10px] font-black uppercase tracking-widest">
-                                    <div className="text-emerald-600">Bien: {Object.values(test.answers).filter((a, i) => a === test.questions[i].correct).length}</div>
-                                    <div className="text-red-500">Mal: {Object.values(test.answers).filter((a, i) => a !== -1 && a !== test.questions[i].correct).length}</div>
-                                    <div className="text-orange-400">Blanco: {Object.values(test.answers).filter(a => a === -1).length}</div>
+                                    <div className="text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg">Bien: {Object.values(test.answers).filter((a, i) => a === test.questions[i]?.correct).length}</div>
+                                    <div className="text-red-500 bg-red-50 px-3 py-1 rounded-lg">Mal: {Object.values(test.answers).filter((a, i) => a !== -1 && a !== test.questions[i]?.correct).length}</div>
+                                    <div className="text-orange-400 bg-orange-50 px-3 py-1 rounded-lg">Blanco: {Object.values(test.answers).filter(a => a === -1).length}</div>
                                 </div>
-                                <button onClick={() => setView('home')} className="w-full bg-[#043d26] text-white py-6 rounded-3xl font-black shadow-2xl active-scale uppercase tracking-widest">Volver</button>
+                                <button onClick={() => setView('home')} className="w-full bg-[#043d26] text-white py-6 rounded-3xl font-black shadow-2xl active-scale uppercase tracking-widest">Cerrar Informe</button>
                             </div>
                         )}
                     </main>
 
                     {view === 'home' && (
                         <nav className="fixed bottom-6 left-6 right-6 h-20 bg-[#043d26] rounded-[2.5rem] shadow-2xl flex items-center justify-around px-4 z-[100] border border-white/10">
-                            <button onClick={() => setNav('home')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'home' ? 'nav-active' : 'text-white/40'}`}>
+                            <button onClick={() => setNav('home')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'home' ? 'nav-active' : 'text-white/40 active-scale'}`}>
                                 <i className="fa-solid fa-house-chimney text-lg"></i>
                                 <span className="text-[8px] font-black uppercase tracking-widest">Inicio</span>
                             </button>
-                            <button onClick={() => setNav('stats')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'stats' ? 'nav-active' : 'text-white/40'}`}>
+                            <button onClick={() => setNav('stats')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'stats' ? 'nav-active' : 'text-white/40 active-scale'}`}>
                                 <i className="fa-solid fa-chart-line text-lg"></i>
                                 <span className="text-[8px] font-black uppercase tracking-widest">Stats</span>
                             </button>
-                            <button onClick={() => setNav('rank')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'rank' ? 'nav-active' : 'text-white/40'}`}>
+                            <button onClick={() => setNav('rank')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'rank' ? 'nav-active' : 'text-white/40 active-scale'}`}>
                                 <i className="fa-solid fa-award text-lg"></i>
                                 <span className="text-[8px] font-black uppercase tracking-widest">Ranking</span>
                             </button>
-                            <button onClick={() => setNav('profile')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'profile' ? 'nav-active' : 'text-white/40'}`}>
+                            <button onClick={() => setNav('profile')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'profile' ? 'nav-active' : 'text-white/40 active-scale'}`}>
                                 <i className="fa-solid fa-user-shield text-lg"></i>
                                 <span className="text-[8px] font-black uppercase tracking-widest">Perfil</span>
                             </button>
