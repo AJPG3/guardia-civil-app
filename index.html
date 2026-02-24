@@ -3,18 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GC Master Pro - Oposición Guardia Civil</title>
-    <!-- Tailwind CSS para el diseño -->
+    <title>GC Master Pro - Academia</title>
+    <!-- Cargamos las librerías necesarias desde internet -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React y ReactDOM -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel para procesar JSX -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
-<body>
+<body class="bg-slate-900">
     <div id="root"></div>
-    <!-- Aquí cargamos tu lógica de la aplicación -->
-    <script type="text/babel" src="app.jsx"></script>
+
+    <!-- El truco: Usamos "./" para asegurar que busque en la misma carpeta -->
+    <script type="text/babel" src="./app.jsx"></script>
+
+    <script type="text/babel">
+        // Si por alguna razón app.jsx falla, esto mostrará un mensaje en pantalla
+        setTimeout(() => {
+            if (!document.getElementById('root').innerHTML) {
+                document.getElementById('root').innerHTML = `
+                    <div style="color: white; text-align: center; padding: 50px; font-family: sans-serif;">
+                        <h1>Cargando Academia...</h1>
+                        <p>Si esto tarda mucho, revisa que el archivo app.jsx esté en la carpeta principal.</p>
+                    </div>
+                `;
+            }
+        }, 3000);
+    </script>
 </body>
 </html>
