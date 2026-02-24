@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GC MASTER ELITE - FINALIZAR TEST</title>
+    <title>GC MASTER ELITE - SISTEMA COMPLETO</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -22,12 +22,15 @@
         .main-scroll-area {
             height: calc(100vh - 80px); 
             overflow-y: auto;
-            padding-bottom: 140px; /* Margen extra para el nav inferior */
+            padding-bottom: 160px;
         }
-        .hot-gradient {
-            background: linear-gradient(90deg, #ff4b2b 0%, #ff416c 100%);
+        .nav-active { color: #34d399 !important; }
+        .nav-active i { transform: translateY(-4px); }
+        .fire-gradient {
+            background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
         }
     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div id="root"></div>
@@ -38,102 +41,164 @@
         const apiKey = "AIzaSyBl1TDv5-OIBZGYLTCQ_v4g_oxkJPNs6eg"; 
         const modelId = "gemini-2.5-flash-preview-09-2025";
 
-        // Base de datos de Exámenes Oficiales 2022-2025
-        const EXAMENES_OFICIALES_DB = {
-            "2025": [
-                { q: "Pregunta simulada 2025: ¿Qué rango ostenta el Director General de la Guardia Civil?", options: ["Secretario de Estado", "Subsecretario", "Ministro", "Director de Área"], correct: 1, expl: "Tiene rango de Subsecretario." }
-            ],
-            "2024": [
-                { q: "Según la CE, ¿cuál es la base de la organización territorial del Estado?", options: ["Las CCAA", "Municipios, Provincias y CCAA", "Las Regiones", "Solo Provincias"], correct: 1, expl: "Art. 137 CE: Municipios, Provincias y CCAA." }
-            ],
-            "2023": [
-                { q: "¿Plazo máximo de detención preventiva por terrorismo?", options: ["24h", "48h", "72h", "48h adicionales"], correct: 3, expl: "Art. 520 bis LECrim permite prórroga de hasta 48h adicionales." }
-            ],
-            "2022": [
-                { q: "¿En qué título de la CE se regulan los Derechos y Deberes fundamentales?", options: ["Título Preliminar", "Título I", "Título II", "Título III"], correct: 1, expl: "Título I CE." }
-            ]
-        };
+        const LOCAL_FALLBACK = [
+            { q: "¿Cuál es el plazo máximo de la detención preventiva según la Constitución?", options: ["24 horas", "48 horas", "72 horas", "5 días"], correct: 2, expl: "Art. 17.2 CE: La detención preventiva no podrá durar más del tiempo estrictamente necesario y, en todo caso, en el plazo máximo de setenta y dos horas." },
+            { q: "¿Qué cuerpo tiene competencia exclusiva en el control de armas y explosivos?", options: ["Policía Nacional", "Guardia Civil", "Policía Local", "Seguridad Privada"], correct: 1, expl: "La Guardia Civil tiene la competencia exclusiva en materia de armas y explosivos." }
+        ];
 
-        const TEMAS_OFICIALES = [
+        const TEMAS = [
             "Derechos Humanos", "Igualdad", "Prevención Riesgos", "Constitucional", "Derecho UE",
             "Inst. Internacionales", "Derecho Civil", "Derecho Penal", "Procesal Penal", "Derecho Administrativo",
             "Protección Datos", "Extranjería", "Seguridad Pública", "Interior y Defensa", "FCS",
             "Guardia Civil", "Protección Civil", "Tecnologías", "Topografía", "Deontología",
             "Menores", "Armas y Explosivos", "Terrorismo", "Inglés", "Ortografía y Gramática"
-        ].map((name, i) => ({ id: i + 1, name, block: i < 17 ? "Derecho" : "Técnico" }));
+        ].map((name, i) => ({ id: i + 1, name }));
 
-        const AUX_TESTS = [
-            { id: 'psic', name: "Psicotécnicos Ómnibus", type: "Psicotécnicos", icon: "🧠" },
-            { id: 'gram', name: "Gramática Española", type: "Lengua", icon: "✍️" },
-            { id: 'voca', name: "Vocabulario Técnico", type: "Lengua", icon: "📖" },
-            { id: 'engl', name: "English Grammar", type: "Idiomas", icon: "🇬🇧" }
+        const PREGUNTAS_CALIENTES = [
+            "Leyes Orgánicas vs Ordinarias", "Plazos de Detención", "Competencias de la GC en el mar", "Tratado de Lisboa", "Estructura del Ministerio del Interior", "Código de Conducta de los funcionarios"
         ];
 
         const App = () => {
             const [view, setView] = useState('home');
             const [activeTab, setActiveTab] = useState('temas');
+            const [nav, setNav] = useState('home');
             const [loading, setLoading] = useState(false);
-            const [test, setTest] = useState({ questions: [], current: 0, answers: {}, source: '' });
+            const [failedQuestions, setFailedQuestions] = useState([]);
             const [numQ, setNumQ] = useState(20);
             const [selectedTarget, setSelectedTarget] = useState(null);
+            const [test, setTest] = useState({ questions: [], current: 0, answers: {}, source: '' });
+            const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-            const startOfficialTest = (year) => {
-                const questions = EXAMENES_OFICIALES_DB[year] || [];
-                setTest({ questions, current: 0, answers: {}, source: `Oficial ${year}` });
-                setView('quiz');
+            const fetchQuestions = async (prompt) => {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
+                let retries = 5;
+                let delay = 1000;
+
+                for (let i = 0; i < retries; i++) {
+                    try {
+                        const response = await fetch(url, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ 
+                                contents: [{ parts: [{ text: prompt }] }],
+                                generationConfig: { 
+                                    responseMimeType: "application/json",
+                                    responseSchema: {
+                                        type: "OBJECT",
+                                        properties: {
+                                            questions: {
+                                                type: "ARRAY",
+                                                items: {
+                                                    type: "OBJECT",
+                                                    properties: {
+                                                        q: { type: "STRING" },
+                                                        options: { type: "ARRAY", items: { type: "STRING" }, minItems: 4, maxItems: 4 },
+                                                        correct: { type: "NUMBER" },
+                                                        expl: { type: "STRING" }
+                                                    },
+                                                    required: ["q", "options", "correct", "expl"]
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            })
+                        });
+                        if (!response.ok) throw new Error();
+                        const data = await response.json();
+                        return JSON.parse(data.candidates[0].content.parts[0].text).questions;
+                    } catch (e) {
+                        if (i === retries - 1) throw e;
+                        await new Promise(r => setTimeout(r, delay));
+                        delay *= 2;
+                    }
+                }
             };
 
             const startIATest = async (target) => {
                 setLoading(true);
-                const prompt = `Genera ${numQ} preguntas sobre "${target.name || target}" para Guardia Civil. JSON: {"questions": [{"q": "...", "options": ["A", "B", "C", "D"], "correct": 0, "expl": "..."}]}`;
+                const name = typeof target === 'string' ? target : target.name;
+                const prompt = `Crea un examen de ${numQ} preguntas nivel Guardia Civil sobre "${name}". Opciones A,B,C,D. Incluye explicaciones técnicas sobre legislación vigente.`;
                 try {
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
-                    });
-                    const data = await response.json();
-                    const questions = JSON.parse(data.candidates[0].content.parts[0].text.replace(/```json|```/g, "")).questions;
-                    setTest({ questions, current: 0, answers: {}, source: 'IA Trainer' });
+                    const qs = await fetchQuestions(prompt);
+                    setTest({ questions: qs, current: 0, answers: {}, source: name });
                     setView('quiz');
                 } catch (e) {
-                    setTest({ questions: [{q: "Error IA", options: ["A","B","C","D"], correct: 0, expl: "Reintenta."}], current: 0, answers: {}, source: 'Error' });
+                    setTest({ questions: LOCAL_FALLBACK, current: 0, answers: {}, source: 'Modo Offline' });
                     setView('quiz');
                 }
                 setLoading(false);
             };
 
+            const handleAnswer = (index) => {
+                if (test.answers[test.current] !== undefined) return;
+                
+                const correct = test.questions[test.current].correct;
+                if (index !== correct) {
+                    setFailedQuestions(prev => {
+                        const exists = prev.find(q => q.q === test.questions[test.current].q);
+                        return exists ? prev : [...prev, test.questions[test.current]];
+                    });
+                }
+
+                setTest({
+                    ...test,
+                    answers: { ...test.answers, [test.current]: index }
+                });
+            };
+
+            const finalizeTest = () => {
+                setShowExitConfirm(false);
+                setView('results');
+            };
+
             if (loading) return (
-                <div className="h-screen bg-[#043d26] flex flex-col items-center justify-center text-white">
-                    <div className="w-12 h-12 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="text-[10px] font-black uppercase tracking-widest">Preparando examen oficial...</p>
+                <div className="h-screen bg-[#043d26] flex flex-col items-center justify-center text-white p-10 text-center">
+                    <div className="w-16 h-16 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-8"></div>
+                    <h2 className="text-xl font-black italic uppercase tracking-widest">Generando Desafío</h2>
+                    <p className="text-emerald-400/60 text-[10px] mt-4 uppercase font-bold tracking-widest leading-loose">Analizando convocatorias oficiales...</p>
                 </div>
             );
 
             return (
-                <div className="max-w-md mx-auto bg-white h-screen flex flex-col relative shadow-2xl">
-                    
-                    {/* Header con Z-Index superior */}
+                <div className="max-w-md mx-auto bg-slate-50 h-screen flex flex-col relative shadow-2xl overflow-hidden">
+                    {/* Confirmación Salida */}
+                    {showExitConfirm && (
+                        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
+                            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-xs text-center">
+                                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <i className="fa-solid fa-triangle-exclamation text-2xl"></i>
+                                </div>
+                                <h3 className="text-lg font-black uppercase italic mb-2">¿Finalizar Test?</h3>
+                                <p className="text-xs text-slate-400 mb-6 font-medium">Se guardarán los resultados obtenidos hasta el momento.</p>
+                                <div className="space-y-3">
+                                    <button onClick={finalizeTest} className="w-full bg-red-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest">Sí, Terminar</button>
+                                    <button onClick={() => setShowExitConfirm(false)} className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest">Continuar</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <header className="glass-header px-6 pt-14 pb-8 rounded-b-[3rem] shadow-xl shrink-0">
                         <div className="flex justify-between items-center mb-8">
-                            <div>
-                                <h1 className="text-2xl font-black italic text-white tracking-tighter">GC MASTER <span className="text-emerald-400">ELITE</span></h1>
-                                <p className="text-[8px] text-emerald-200/50 font-bold uppercase tracking-[0.4em] mt-1">Academia 2025</p>
-                            </div>
+                            <h1 className="text-2xl font-black italic text-white tracking-tighter">GC MASTER <span className="text-emerald-400">ELITE</span></h1>
+                            <button onClick={() => setView('config')} className="w-10 h-10 bg-white/10 rounded-2xl flex items-center justify-center text-white text-lg active-scale">
+                                <i className="fa-solid fa-sliders"></i>
+                            </button>
                         </div>
 
                         {view === 'home' && (
-                            <div className="flex bg-black/20 p-1.5 rounded-2xl overflow-x-auto no-scrollbar backdrop-blur-md border border-white/5">
+                            <div className="flex bg-black/20 p-1.5 rounded-2xl overflow-x-auto no-scrollbar backdrop-blur-md">
                                 {[
                                     { id: 'temas', label: 'Temario' },
-                                    { id: 'hot', label: '🔥 Repetidas' },
-                                    { id: 'oficiales', label: 'Oficiales' },
-                                    { id: 'auxiliares', label: 'Auxiliares' }
+                                    { id: 'failed', label: 'Errores' },
+                                    { id: 'hot', label: 'Calientes' },
+                                    { id: 'oficiales', label: 'Oficiales' }
                                 ].map(tab => (
                                     <button 
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id)}
-                                        className={`flex-none px-6 py-3 text-[10px] font-black uppercase rounded-xl transition-all mr-1 ${activeTab === tab.id ? 'bg-white text-[#043d26] shadow-lg' : 'text-white/40'}`}
+                                        className={`flex-none px-5 py-2.5 text-[9px] font-black uppercase rounded-xl transition-all mr-1 ${activeTab === tab.id ? 'bg-white text-[#043d26]' : 'text-white/40'}`}
                                     >
                                         {tab.label}
                                     </button>
@@ -142,19 +207,51 @@
                         )}
                     </header>
 
-                    {/* Área de scroll con espaciado superior corregido (pt-12) */}
-                    <main className="main-scroll-area px-6 pt-12 no-scrollbar">
+                    <main className="main-scroll-area px-6 pt-8 no-scrollbar">
                         {view === 'home' && (
-                            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
+                            <div className="space-y-4">
                                 {activeTab === 'temas' && (
-                                    <div className="space-y-3">
-                                        {TEMAS_OFICIALES.map(t => (
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {TEMAS.map(t => (
                                             <div key={t.id} onClick={() => { setSelectedTarget(t); setView('config'); }} className="bg-white p-5 rounded-3xl border border-slate-100 flex items-center gap-4 active-scale shadow-sm">
                                                 <div className="w-10 h-10 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-700 font-black text-xs">{t.id}</div>
-                                                <div className="flex-1">
-                                                    <p className="text-sm font-bold text-slate-700 leading-tight">{t.name}</p>
-                                                    <p className="text-[8px] font-black text-slate-300 uppercase tracking-tighter">{t.block}</p>
-                                                </div>
+                                                <div className="flex-1 font-bold text-slate-700 text-sm">{t.name}</div>
+                                                <i className="fa-solid fa-chevron-right text-slate-300 text-xs"></i>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {activeTab === 'failed' && (
+                                    <div className="text-center py-10">
+                                        <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                                            <i className="fa-solid fa-bug text-2xl text-red-500"></i>
+                                        </div>
+                                        <h3 className="text-xl font-black text-slate-800 mb-2 uppercase italic">Test de Fallos</h3>
+                                        <p className="text-slate-400 text-xs mb-8 px-10">Tienes {failedQuestions.length} preguntas acumuladas.</p>
+                                        
+                                        {failedQuestions.length > 0 ? (
+                                            <button onClick={() => { setTest({ questions: failedQuestions, current: 0, answers: {}, source: 'Repaso de Fallos' }); setView('quiz'); }} className="w-full bg-red-500 text-white py-6 rounded-3xl font-black active-scale shadow-lg shadow-red-200 uppercase tracking-widest">Repasar Fallos Ahora</button>
+                                        ) : (
+                                            <div className="p-8 bg-slate-100 rounded-3xl text-slate-400 font-bold uppercase text-[10px]">¡Limpio de errores!</div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {activeTab === 'hot' && (
+                                    <div className="space-y-3">
+                                        <div className="fire-gradient p-6 rounded-[2.5rem] text-white mb-6">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <i className="fa-solid fa-fire animate-bounce"></i>
+                                                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Tendencias 2024/25</span>
+                                            </div>
+                                            <p className="text-xs font-bold opacity-90 leading-relaxed">Preguntas basadas en los conceptos que más se han repetido en las últimas 3 promociones.</p>
+                                        </div>
+                                        {PREGUNTAS_CALIENTES.map((item, idx) => (
+                                            <div key={idx} onClick={() => startIATest(item)} className="bg-white p-5 rounded-3xl border border-orange-50 flex items-center gap-4 active-scale shadow-sm">
+                                                <div className="w-8 h-8 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600 font-black text-[10px]">{idx+1}</div>
+                                                <div className="flex-1 font-bold text-slate-700 text-sm italic">{item}</div>
+                                                <i className="fa-solid fa-fire text-orange-200"></i>
                                             </div>
                                         ))}
                                     </div>
@@ -162,36 +259,13 @@
 
                                 {activeTab === 'oficiales' && (
                                     <div className="space-y-4">
-                                        {["2025", "2024", "2023", "2022"].map(year => (
-                                            <div key={year} onClick={() => startOfficialTest(year)} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex justify-between items-center active-scale">
+                                        {["2024", "2023", "2022"].map(y => (
+                                            <div key={y} onClick={() => startIATest(`Examen oficial Guardia Civil año ${y}`)} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 flex justify-between items-center active-scale shadow-sm">
                                                 <div>
-                                                    <h3 className="text-lg font-black text-slate-800 italic uppercase">EXAMEN {year}</h3>
-                                                    <p className="text-[9px] font-bold text-emerald-600 uppercase">Convocatoria Real</p>
+                                                    <h3 className="text-lg font-black text-slate-800 italic uppercase">PROMOCIÓN {y}</h3>
+                                                    <p className="text-[10px] font-bold text-emerald-600 mt-1 uppercase">Simulacro Real</p>
                                                 </div>
-                                                <div className="text-2xl">📜</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {activeTab === 'hot' && (
-                                    <div className="space-y-4">
-                                        <div onClick={() => startIATest({name: 'Preguntas Repetidas'})} className="hot-gradient p-12 rounded-[3.5rem] text-center active-scale shadow-2xl relative overflow-hidden group">
-                                            <h3 className="text-white text-2xl font-black italic uppercase relative z-10">TEST DE<br/>REPETIDAS</h3>
-                                            <p className="text-white/70 text-[9px] font-bold uppercase mt-4 tracking-widest relative z-10">Conceptos Críticos</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === 'auxiliares' && (
-                                    <div className="grid gap-4">
-                                        {AUX_TESTS.map(aux => (
-                                            <div key={aux.id} onClick={() => { setSelectedTarget(aux); setView('config'); }} className="bg-white p-7 rounded-[3rem] border border-slate-100 shadow-sm flex items-center gap-5 active-scale">
-                                                <div className="text-4xl">{aux.icon}</div>
-                                                <div className="flex-1">
-                                                    <h3 className="text-sm font-black text-slate-800 uppercase italic leading-none">{aux.name}</h3>
-                                                    <p className="text-[9px] font-bold text-emerald-500 uppercase mt-2">{aux.type}</p>
-                                                </div>
+                                                <i className="fa-solid fa-medal text-2xl text-slate-200"></i>
                                             </div>
                                         ))}
                                     </div>
@@ -200,94 +274,125 @@
                         )}
 
                         {view === 'config' && (
-                            <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl animate-in zoom-in-95">
-                                <h3 className="text-2xl font-black text-[#043d26] mb-10 text-center uppercase italic">{selectedTarget?.name}</h3>
+                            <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-slate-50">
+                                <h3 className="text-2xl font-black text-[#043d26] mb-2 text-center uppercase italic">{selectedTarget?.name || 'Nuevo Test'}</h3>
+                                <p className="text-center text-slate-400 text-[10px] font-bold uppercase mb-10 tracking-widest tracking-widest">Configura tu sesión</p>
+                                
+                                <label className="text-[10px] font-black text-slate-300 uppercase block mb-4 ml-2">Longitud del test</label>
                                 <div className="flex gap-2 mb-10">
-                                    {[20, 50, 100].map(n => (
-                                        <button key={n} onClick={() => setNumQ(n)} className={`flex-1 py-5 rounded-2xl font-black text-sm transition-all ${numQ === n ? 'bg-[#043d26] text-white' : 'bg-slate-50 text-slate-400'}`}>{n}</button>
+                                    {[10, 20, 50, 100].map(n => (
+                                        <button key={n} onClick={() => setNumQ(n)} className={`flex-1 py-5 rounded-2xl font-black text-sm transition-all ${numQ === n ? 'bg-[#043d26] text-white shadow-xl' : 'bg-slate-50 text-slate-400'}`}>{n}</button>
                                     ))}
                                 </div>
-                                <button onClick={() => startIATest(selectedTarget)} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-black shadow-xl active-scale uppercase tracking-widest italic">Comenzar</button>
-                                <button onClick={() => setView('home')} className="w-full mt-6 text-[10px] font-black text-slate-300 uppercase">Cancelar</button>
+
+                                <button onClick={() => startIATest(selectedTarget || 'Miscelánea')} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-black active-scale shadow-xl shadow-emerald-100 uppercase tracking-widest mb-4">Generar Test</button>
+                                <button onClick={() => setView('home')} className="w-full py-4 text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Volver</button>
                             </div>
                         )}
 
                         {view === 'quiz' && (
-                            <div className="animate-in slide-in-from-right-4">
-                                <div className="bg-white p-8 rounded-[3.5rem] shadow-xl border border-slate-50 relative min-h-[500px]">
-                                    <div className="flex justify-between items-center mb-10">
-                                        <div className="bg-emerald-50 px-4 py-2 rounded-2xl">
-                                            <span className="text-[10px] font-black text-emerald-600 uppercase">{test.current + 1} / {test.questions.length}</span>
+                            <div className="pb-20">
+                                <div className="bg-white p-8 rounded-[3.5rem] shadow-xl border border-slate-50 min-h-[520px] flex flex-col relative">
+                                    <div className="flex justify-between items-center mb-8 shrink-0">
+                                        <div className="flex flex-col">
+                                            <span className="text-[9px] font-black text-emerald-600 uppercase mb-1 tracking-wider">{test.source}</span>
+                                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{test.current + 1} de {test.questions.length}</span>
                                         </div>
-                                        {/* BOTÓN ACTUALIZADO: FINALIZAR TEST */}
-                                        <button onClick={() => setView('results')} className="text-[10px] font-black text-red-500 uppercase px-4 py-2 bg-red-50 rounded-2xl active-scale shadow-sm">Finalizar Test</button>
+                                        <button 
+                                            onClick={() => setShowExitConfirm(true)} 
+                                            className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest active-scale"
+                                        >
+                                            Finalizar Test
+                                        </button>
                                     </div>
 
-                                    <h2 className="text-lg font-bold text-slate-800 mb-10 leading-snug">{test.questions[test.current]?.q}</h2>
+                                    <div className="flex-1">
+                                        <h2 className="text-lg font-bold text-slate-800 mb-10 leading-snug">{test.questions[test.current]?.q}</h2>
 
-                                    <div className="space-y-3">
-                                        {test.questions[test.current]?.options.map((opt, i) => {
-                                            const answered = test.answers[test.current] !== undefined;
-                                            const isCorrect = i === test.questions[test.current].correct;
-                                            const isSelected = i === test.answers[test.current];
+                                        <div className="space-y-3">
+                                            {test.questions[test.current]?.options.map((opt, i) => {
+                                                const answered = test.answers[test.current] !== undefined;
+                                                const correct = test.questions[test.current].correct;
+                                                const selected = i === test.answers[test.current];
 
-                                            let style = "bg-slate-50 border-transparent text-slate-600";
-                                            if (answered) {
-                                                if (isCorrect) style = "bg-emerald-50 border-emerald-500 text-emerald-800 scale-[1.02]";
-                                                else if (isSelected) style = "bg-red-50 border-red-500 text-red-800 opacity-80";
-                                                else style = "opacity-30";
-                                            }
+                                                let style = "bg-slate-50 border-transparent text-slate-600";
+                                                if (answered) {
+                                                    if (i === correct) style = "bg-emerald-50 border-emerald-500 text-emerald-800 scale-[1.02] shadow-lg shadow-emerald-50";
+                                                    else if (selected) style = "bg-red-50 border-red-500 text-red-800 opacity-80";
+                                                    else style = "opacity-30 grayscale";
+                                                }
 
-                                            return (
-                                                <button key={i} onClick={() => !answered && setTest({...test, answers: {...test.answers, [test.current]: i}})} className={`w-full p-5 rounded-3xl border-2 text-left text-sm font-semibold flex gap-4 transition-all ${style}`}>
-                                                    <span className={`w-7 h-7 shrink-0 rounded-xl flex items-center justify-center text-[11px] font-black ${answered && isCorrect ? 'bg-emerald-500 text-white' : 'bg-white border text-slate-300'}`}>{String.fromCharCode(65+i)}</span>
-                                                    <span className="flex-1 mt-0.5">{opt}</span>
-                                                </button>
-                                            );
-                                        })}
+                                                return (
+                                                    <button key={i} onClick={() => handleAnswer(i)} className={`w-full p-5 rounded-3xl border-2 text-left text-sm font-semibold flex gap-4 transition-all duration-300 ${style}`}>
+                                                        <span className={`w-7 h-7 shrink-0 rounded-xl flex items-center justify-center text-[11px] font-black ${answered && i === correct ? 'bg-emerald-500 text-white' : 'bg-white border'}`}>{String.fromCharCode(65+i)}</span>
+                                                        <span className="flex-1">{opt}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
 
                                     {test.answers[test.current] !== undefined && (
-                                        <div className="mt-8 p-6 bg-[#043d26] rounded-3xl text-white animate-in slide-in-from-top-4">
-                                            <p className="text-[11px] font-medium leading-relaxed italic">{test.questions[test.current].expl}</p>
+                                        <div className="mt-8 p-6 bg-slate-900 rounded-3xl text-white animate-in slide-in-from-bottom-4">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <i className="fa-solid fa-scale-balanced text-emerald-400 text-xs"></i>
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Jurídica y Técnica</span>
+                                            </div>
+                                            <p className="text-[11px] font-medium leading-relaxed opacity-90">{test.questions[test.current].expl}</p>
                                         </div>
                                     )}
                                 </div>
 
                                 <div className="flex gap-4 mt-8">
-                                    <button onClick={() => setTest({...test, current: Math.max(0, test.current - 1)})} className="flex-1 bg-white py-6 rounded-3xl font-black text-[10px] uppercase shadow-sm border">Anterior</button>
+                                    <button onClick={() => setTest({...test, current: Math.max(0, test.current - 1)})} className="flex-1 bg-white border border-slate-200 py-6 rounded-3xl font-black text-[10px] uppercase active-scale shadow-sm">Anterior</button>
                                     <button 
                                         onClick={() => {
                                             if(test.current < test.questions.length - 1) setTest({...test, current: test.current + 1});
-                                            else setView('results');
+                                            else finalizeTest();
                                         }}
-                                        className="flex-[2] bg-[#043d26] text-white py-6 rounded-3xl font-black text-[10px] uppercase shadow-xl active-scale"
+                                        className="flex-[2] bg-[#043d26] text-white py-6 rounded-3xl font-black text-[10px] uppercase shadow-2xl active-scale tracking-widest"
                                     >
-                                        Siguiente
+                                        Siguiente Pregunta
                                     </button>
                                 </div>
                             </div>
                         )}
 
                         {view === 'results' && (
-                            <div className="text-center py-20 px-6">
-                                <div className="w-40 h-40 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-10 border-8 border-emerald-100">
-                                    <div className="text-5xl font-black text-[#043d26]">
-                                        {Math.round((Object.keys(test.answers).filter(k => test.answers[k] === test.questions[k].correct).length / Math.max(1, test.questions.length)) * 100)}%
+                            <div className="text-center py-10 px-6">
+                                <div className="w-48 h-48 bg-white rounded-full flex items-center justify-center mx-auto mb-10 border-[12px] border-emerald-50 shadow-xl">
+                                    <div className="text-center">
+                                        <div className="text-5xl font-black text-[#043d26]">
+                                            {Math.round((Object.keys(test.answers).filter(k => test.answers[k] === test.questions[k].correct).length / Math.max(1, test.questions.length)) * 100)}%
+                                        </div>
+                                        <div className="text-[10px] font-black text-slate-300 uppercase mt-1">Aciertos</div>
                                     </div>
                                 </div>
-                                <h2 className="text-2xl font-black text-slate-800 mb-12 uppercase italic">Resultados</h2>
-                                <button onClick={() => setView('home')} className="w-full bg-[#043d26] text-white py-6 rounded-3xl font-black shadow-2xl active-scale uppercase">Volver al Inicio</button>
+                                <h2 className="text-2xl font-black text-slate-800 mb-2 uppercase italic">Resultados</h2>
+                                <p className="text-slate-400 text-xs mb-10 px-8 leading-relaxed">Resumen de tu sesión. Las preguntas falladas han sido añadidas a tu depósito de errores.</p>
+                                <button onClick={() => setView('home')} className="w-full bg-[#043d26] text-white py-6 rounded-3xl font-black shadow-2xl active-scale uppercase tracking-[0.2em]">Cerrar Resumen</button>
                             </div>
                         )}
                     </main>
 
-                    {/* Navbar inferior */}
                     {view === 'home' && (
-                        <nav className="fixed bottom-6 left-6 right-6 h-20 bg-[#043d26] rounded-[2.5rem] shadow-2xl flex items-center justify-around px-10 z-[100] border border-white/10">
-                            <button className="text-white flex flex-col items-center gap-1.5"><div className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></div><span className="text-[8px] font-black uppercase">Home</span></button>
-                            <button className="text-white opacity-40 flex flex-col items-center gap-1.5"><span className="text-lg">📈</span><span className="text-[8px] font-black uppercase">Stats</span></button>
-                            <button className="text-white opacity-40 flex flex-col items-center gap-1.5"><span className="text-lg">⚙️</span><span className="text-[8px] font-black uppercase">Ajustes</span></button>
+                        <nav className="fixed bottom-6 left-6 right-6 h-20 bg-[#043d26] rounded-[2.5rem] shadow-2xl flex items-center justify-around px-4 z-[100] border border-white/10">
+                            <button onClick={() => setNav('home')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'home' ? 'nav-active' : 'text-white/40'}`}>
+                                <i className="fa-solid fa-house-chimney text-lg"></i>
+                                <span className="text-[8px] font-black uppercase tracking-widest">Inicio</span>
+                            </button>
+                            <button onClick={() => setNav('stats')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'stats' ? 'nav-active' : 'text-white/40'}`}>
+                                <i className="fa-solid fa-chart-line text-lg"></i>
+                                <span className="text-[8px] font-black uppercase tracking-widest">Stats</span>
+                            </button>
+                            <button onClick={() => setNav('rank')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'rank' ? 'nav-active' : 'text-white/40'}`}>
+                                <i className="fa-solid fa-award text-lg"></i>
+                                <span className="text-[8px] font-black uppercase tracking-widest">Ranking</span>
+                            </button>
+                            <button onClick={() => setNav('profile')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${nav === 'profile' ? 'nav-active' : 'text-white/40'}`}>
+                                <i className="fa-solid fa-user-shield text-lg"></i>
+                                <span className="text-[8px] font-black uppercase tracking-widest">Perfil</span>
+                            </button>
                         </nav>
                     )}
                 </div>
@@ -299,4 +404,3 @@
     </script>
 </body>
 </html>
-
