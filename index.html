@@ -2,33 +2,179 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GC Master Pro - Academia</title>
-    <!-- Cargamos las librerías necesarias desde internet -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GC MASTER PRO</title>
+    <!-- Librerías desde CDNs estables -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,700;0,900;1,900&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; background-color: #f9fafb; }
+        .active-scale:active { transform: scale(0.95); }
+    </style>
 </head>
-<body class="bg-slate-900">
+<body>
     <div id="root"></div>
 
-    <!-- El truco: Usamos "./" para asegurar que busque en la misma carpeta -->
-    <script type="text/babel" src="app.jsx"></script>
-
     <script type="text/babel">
-        // Si por alguna razón app.jsx falla, esto mostrará un mensaje en pantalla
-        setTimeout(() => {
-            if (!document.getElementById('root').innerHTML) {
-                document.getElementById('root').innerHTML = `
-                    <div style="color: white; text-align: center; padding: 50px; font-family: sans-serif;">
-                        <h1>Cargando Academia...</h1>
-                        <p>Si esto tarda mucho, revisa que el archivo app.jsx esté en la carpeta principal.</p>
-                    </div>
-                `;
-            }
-        }, 3000);
+        const { useState, useEffect } = React;
+
+        // --- PREGUNTAS INICIALES (Para que funcione aunque no haya internet/API) ---
+        const PREGUNTAS_LOCALES = [
+            { question: "¿Cuál es el lema de la Guardia Civil?", options: ["El honor es mi divisa", "Todo por la patria", "Lealtad y sacrificio", "Servicio y orden"], correct: 0, justification: "El artículo 1 de la Cartilla del Guardia Civil establece que el honor ha de ser la principal divisa del Guardia Civil." },
+            { question: "¿En qué año se fundó la Guardia Civil?", options: ["1824", "1844", "1868", "1936"], correct: 1, justification: "La Guardia Civil fue fundada en 1844 por el II Duque de Ahumada." }
+        ];
+
+        const TOPICS = [
+            "Derecho Constitucional", "Derecho Penal", "Derecho Procesal", "Derecho Administrativo", 
+            "Derechos Humanos", "Igualdad", "Inglés", "Ortografía", "Psicotécnicos"
+        ];
+
+        const App = () => {
+            const [view, setView] = useState('home');
+            const [questions, setQuestions] = useState([]);
+            const [currentIdx, setCurrentIdx] = useState(0);
+            const [selectedAns, setSelectedAns] = useState(null);
+            const [isAnswered, setIsAnswered] = useState(false);
+            const [loading, setLoading] = useState(false);
+            const [stats, setStats] = useState({ done: 0, correct: 0 });
+
+            const startTest = (title) => {
+                setLoading(true);
+                // Simulamos carga para asegurar que React responde
+                setTimeout(() => {
+                    setQuestions(PREGUNTAS_LOCALES);
+                    setCurrentIdx(0);
+                    setIsAnswered(false);
+                    setSelectedAns(null);
+                    setView('quiz');
+                    setLoading(false);
+                }, 800);
+            };
+
+            const handleAnswer = (idx) => {
+                if (isAnswered) return;
+                setSelectedAns(idx);
+                setIsAnswered(true);
+                if (idx === questions[currentIdx].correct) {
+                    setStats(prev => ({ ...prev, correct: prev.correct + 1, done: prev.done + 1 }));
+                } else {
+                    setStats(prev => ({ ...prev, done: prev.done + 1 }));
+                }
+            };
+
+            if (loading) return (
+                <div className="min-h-screen flex flex-col items-center justify-center p-10 bg-[#064d2e] text-white">
+                    <div className="w-12 h-12 border-4 border-green-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <h2 className="text-xl font-black italic">PREPARANDO EXAMEN...</h2>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen flex flex-col max-w-xl mx-auto bg-gray-50">
+                    {/* HEADER */}
+                    <header className="bg-[#064d2e] text-white pt-10 pb-12 px-6 rounded-b-[2.5rem] shadow-xl">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h1 className="text-2xl font-black italic tracking-tighter">GC MASTER PRO</h1>
+                                <p className="text-[10px] font-bold text-green-400 uppercase tracking-widest">Academia Inteligente</p>
+                            </div>
+                            <div className="bg-white/10 p-3 rounded-2xl border border-white/5">
+                                <span className="text-xs font-black text-green-400">{stats.done > 0 ? Math.round((stats.correct/stats.done)*100) : 0}%</span>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="px-5 -mt-6 flex-grow">
+                        {view === 'home' && (
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button onClick={() => startTest('Oficial')} className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 text-left active-scale">
+                                        <p className="text-[9px] font-black text-emerald-600 uppercase mb-1">Simulacro</p>
+                                        <p className="text-xl font-black text-gray-800 italic">OFICIAL</p>
+                                    </button>
+                                    <button onClick={() => startTest('Repaso')} className="bg-emerald-600 p-5 rounded-[2rem] shadow-lg text-left active-scale text-white">
+                                        <p className="text-[9px] font-black text-emerald-200 uppercase mb-1">Modo</p>
+                                        <p className="text-xl font-black italic">REPASO</p>
+                                    </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase ml-2">Temas Disponibles</p>
+                                    {TOPICS.map((topic, i) => (
+                                        <button key={i} onClick={() => startTest(topic)} className="w-full bg-white p-4 rounded-2xl flex items-center justify-between shadow-sm border border-transparent active:border-green-500 transition-all text-left">
+                                            <span className="text-sm font-bold text-gray-700">{topic}</span>
+                                            <span className="text-gray-300">→</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'quiz' && (
+                            <div className="space-y-4 pt-4">
+                                <div className="flex justify-between items-center px-2">
+                                    <span className="text-[10px] font-black text-emerald-700 uppercase">Pregunta {currentIdx + 1}/{questions.length}</span>
+                                    <button onClick={() => setView('home')} className="text-[10px] font-black text-red-400 uppercase">Salir</button>
+                                </div>
+
+                                <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100">
+                                    <h2 className="text-lg font-bold text-gray-800 mb-6">{questions[currentIdx].question}</h2>
+                                    <div className="space-y-3">
+                                        {questions[currentIdx].options.map((opt, i) => (
+                                            <button 
+                                                key={i} 
+                                                onClick={() => handleAnswer(i)}
+                                                className={`w-full p-4 rounded-2xl border-2 text-left text-sm font-bold transition-all ${
+                                                    isAnswered 
+                                                    ? i === questions[currentIdx].correct ? 'bg-green-50 border-green-500 text-green-700' : (selectedAns === i ? 'bg-red-50 border-red-500 text-red-700' : 'bg-gray-50 opacity-50')
+                                                    : 'bg-gray-50 border-gray-100'
+                                                }`}
+                                            >
+                                                {opt}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {isAnswered && (
+                                        <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-100">
+                                            <p className="text-[9px] font-black text-blue-600 uppercase mb-1">Explicación</p>
+                                            <p className="text-xs italic text-blue-800 leading-relaxed">{questions[currentIdx].justification}</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {isAnswered && (
+                                    <button 
+                                        onClick={() => {
+                                            if(currentIdx < questions.length - 1) {
+                                                setCurrentIdx(currentIdx + 1);
+                                                setIsAnswered(false);
+                                                setSelectedAns(null);
+                                            } else {
+                                                setView('home');
+                                            }
+                                        }}
+                                        className="w-full bg-[#064d2e] text-white py-5 rounded-[2rem] font-black shadow-xl active-scale"
+                                    >
+                                        {currentIdx < questions.length - 1 ? 'SIGUIENTE PREGUNTA' : 'FINALIZAR'}
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </main>
+
+                    <footer className="p-6 text-center">
+                        <p className="text-[10px] font-black text-gray-300 uppercase tracking-[0.2em]">GC Master Pro v2.0</p>
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
-
