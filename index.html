@@ -38,12 +38,16 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        const apiKey = "AIzaSyBl1TDv5-OIBZGYLTCQ_v4g_oxkJPNs6eg"; 
+        const apiKey = ""; 
         const modelId = "gemini-2.5-flash-preview-09-2025";
 
-        const LOCAL_FALLBACK = [
-            { q: "¿Cuál es el plazo máximo de la detención preventiva según la Constitución?", options: ["24 horas", "48 horas", "72 horas", "5 días"], correct: 2, expl: "Art. 17.2 CE: La detención preventiva no podrá durar más del tiempo estrictamente necesario y, en todo caso, en el plazo máximo de setenta y dos horas." },
-            { q: "¿Qué cuerpo tiene competencia exclusiva en el control de armas y explosivos?", options: ["Policía Nacional", "Guardia Civil", "Policía Local", "Seguridad Privada"], correct: 1, expl: "La Guardia Civil tiene la competencia exclusiva en materia de armas y explosivos." }
+        // Fallback extendido para evitar que el modo offline sea tan corto
+        const EXTENDED_OFFLINE_DB = [
+            { q: "¿Cuál es el plazo máximo de la detención preventiva según la Constitución?", options: ["24 horas", "48 horas", "72 horas", "5 días"], correct: 2, expl: "Art. 17.2 CE: Plazo máximo de 72 horas." },
+            { q: "¿Qué cuerpo tiene competencia exclusiva en el control de armas y explosivos?", options: ["Policía Nacional", "Guardia Civil", "Policía Local", "Seguridad Privada"], correct: 1, expl: "Competencia exclusiva de la Guardia Civil según LO 2/86." },
+            { q: "¿Quién nombra a los Ministros a propuesta del Presidente?", options: ["Las Cortes", "El Congreso", "El Rey", "El Consejo de Estado"], correct: 2, expl: "Art. 62.e CE: Corresponde al Rey nombrar a los miembros del Gobierno." },
+            { q: "¿Cuál es la capital del Estado español?", options: ["Barcelona", "Sevilla", "Madrid", "Valencia"], correct: 2, expl: "Art. 5 CE: La capital del Estado es la villa de Madrid." },
+            { q: "¿Qué mayoría se requiere para aprobar una Ley Orgánica?", options: ["Simple", "Absoluta", "2/3", "3/5"], correct: 1, expl: "Mayoría absoluta del Congreso en una votación final sobre el conjunto del proyecto." }
         ];
 
         const TEMAS = [
@@ -118,13 +122,15 @@
             const startIATest = async (target) => {
                 setLoading(true);
                 const name = typeof target === 'string' ? target : target.name;
-                const prompt = `Crea un examen de ${numQ} preguntas nivel Guardia Civil sobre "${name}". Opciones A,B,C,D. Incluye explicaciones técnicas sobre legislación vigente.`;
+                const prompt = `Genera un examen de ${numQ} preguntas nivel Guardia Civil sobre "${name}". Opciones A,B,C,D. Incluye explicaciones detalladas basadas en la ley.`;
                 try {
                     const qs = await fetchQuestions(prompt);
                     setTest({ questions: qs, current: 0, answers: {}, source: name });
                     setView('quiz');
                 } catch (e) {
-                    setTest({ questions: LOCAL_FALLBACK, current: 0, answers: {}, source: 'Modo Offline' });
+                    // Modo offline mejorado con más preguntas aleatorias
+                    const offlinePool = [...EXTENDED_OFFLINE_DB].sort(() => Math.random() - 0.5);
+                    setTest({ questions: offlinePool.slice(0, numQ), current: 0, answers: {}, source: 'Modo Offline (Problema de Conexión)' });
                     setView('quiz');
                 }
                 setLoading(false);
@@ -134,7 +140,7 @@
                 if (test.answers[test.current] !== undefined) return;
                 
                 const correct = test.questions[test.current].correct;
-                if (index !== correct) {
+                if (index !== -1 && index !== correct) {
                     setFailedQuestions(prev => {
                         const exists = prev.find(q => q.q === test.questions[test.current].q);
                         return exists ? prev : [...prev, test.questions[test.current]];
@@ -147,6 +153,10 @@
                 });
             };
 
+            const deleteFailedQuestion = (qText) => {
+                setFailedQuestions(prev => prev.filter(q => q.q !== qText));
+            };
+
             const finalizeTest = () => {
                 setShowExitConfirm(false);
                 setView('results');
@@ -156,7 +166,7 @@
                 <div className="h-screen bg-[#043d26] flex flex-col items-center justify-center text-white p-10 text-center">
                     <div className="w-16 h-16 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-8"></div>
                     <h2 className="text-xl font-black italic uppercase tracking-widest">Generando Desafío</h2>
-                    <p className="text-emerald-400/60 text-[10px] mt-4 uppercase font-bold tracking-widest leading-loose">Analizando convocatorias oficiales...</p>
+                    <p className="text-emerald-400/60 text-[10px] mt-4 uppercase font-bold tracking-widest leading-loose">Conectando con Servidores de la Academia...</p>
                 </div>
             );
 
@@ -166,14 +176,11 @@
                     {showExitConfirm && (
                         <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
                             <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-xs text-center">
-                                <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <i className="fa-solid fa-triangle-exclamation text-2xl"></i>
-                                </div>
                                 <h3 className="text-lg font-black uppercase italic mb-2">¿Finalizar Test?</h3>
-                                <p className="text-xs text-slate-400 mb-6 font-medium">Se guardarán los resultados obtenidos hasta el momento.</p>
+                                <p className="text-xs text-slate-400 mb-6 font-medium">Podrás ver los aciertos obtenidos hasta ahora.</p>
                                 <div className="space-y-3">
-                                    <button onClick={finalizeTest} className="w-full bg-red-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest">Sí, Terminar</button>
-                                    <button onClick={() => setShowExitConfirm(false)} className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest">Continuar</button>
+                                    <button onClick={finalizeTest} className="w-full bg-red-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest">Finalizar</button>
+                                    <button onClick={() => setShowExitConfirm(false)} className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest">Cancelar</button>
                                 </div>
                             </div>
                         </div>
@@ -223,18 +230,33 @@
                                 )}
 
                                 {activeTab === 'failed' && (
-                                    <div className="text-center py-10">
-                                        <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                                            <i className="fa-solid fa-bug text-2xl text-red-500"></i>
+                                    <div className="space-y-4">
+                                        <div className="text-center py-6">
+                                            <h3 className="text-xl font-black text-slate-800 mb-2 uppercase italic">Banco de Errores</h3>
+                                            <p className="text-slate-400 text-xs mb-6 font-bold uppercase tracking-widest">{failedQuestions.length} preguntas guardadas</p>
+                                            {failedQuestions.length > 0 && (
+                                                <button onClick={() => { setTest({ questions: failedQuestions, current: 0, answers: {}, source: 'Repaso de Fallos' }); setView('quiz'); }} className="w-full bg-red-500 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-red-100 mb-6">Iniciar Repaso</button>
+                                            )}
                                         </div>
-                                        <h3 className="text-xl font-black text-slate-800 mb-2 uppercase italic">Test de Fallos</h3>
-                                        <p className="text-slate-400 text-xs mb-8 px-10">Tienes {failedQuestions.length} preguntas acumuladas.</p>
                                         
-                                        {failedQuestions.length > 0 ? (
-                                            <button onClick={() => { setTest({ questions: failedQuestions, current: 0, answers: {}, source: 'Repaso de Fallos' }); setView('quiz'); }} className="w-full bg-red-500 text-white py-6 rounded-3xl font-black active-scale shadow-lg shadow-red-200 uppercase tracking-widest">Repasar Fallos Ahora</button>
-                                        ) : (
-                                            <div className="p-8 bg-slate-100 rounded-3xl text-slate-400 font-bold uppercase text-[10px]">¡Limpio de errores!</div>
-                                        )}
+                                        <div className="space-y-3">
+                                            {failedQuestions.map((q, idx) => (
+                                                <div key={idx} className="bg-white p-5 rounded-3xl border border-red-50 flex items-center gap-4 shadow-sm animate-in slide-in-from-right">
+                                                    <div className="flex-1">
+                                                        <p className="text-[11px] font-bold text-slate-700 line-clamp-2">{q.q}</p>
+                                                    </div>
+                                                    <button onClick={() => deleteFailedQuestion(q.q)} className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center active-scale hover:text-red-500 transition-colors">
+                                                        <i className="fa-solid fa-trash-can text-sm"></i>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {failedQuestions.length === 0 && (
+                                                <div className="text-center py-10 opacity-30">
+                                                    <i className="fa-solid fa-circle-check text-4xl mb-4"></i>
+                                                    <p className="text-[10px] font-black uppercase">¡Nada que repasar!</p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 
@@ -243,9 +265,9 @@
                                         <div className="fire-gradient p-6 rounded-[2.5rem] text-white mb-6">
                                             <div className="flex items-center gap-2 mb-2">
                                                 <i className="fa-solid fa-fire animate-bounce"></i>
-                                                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Tendencias 2024/25</span>
+                                                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Más Preguntado</span>
                                             </div>
-                                            <p className="text-xs font-bold opacity-90 leading-relaxed">Preguntas basadas en los conceptos que más se han repetido en las últimas 3 promociones.</p>
+                                            <p className="text-xs font-bold opacity-90 leading-relaxed">Conceptos clave detectados en los últimos simulacros de la academia.</p>
                                         </div>
                                         {PREGUNTAS_CALIENTES.map((item, idx) => (
                                             <div key={idx} onClick={() => startIATest(item)} className="bg-white p-5 rounded-3xl border border-orange-50 flex items-center gap-4 active-scale shadow-sm">
@@ -259,13 +281,13 @@
 
                                 {activeTab === 'oficiales' && (
                                     <div className="space-y-4">
-                                        {["2024", "2023", "2022"].map(y => (
+                                        {["2025", "2024", "2023", "2022"].map(y => (
                                             <div key={y} onClick={() => startIATest(`Examen oficial Guardia Civil año ${y}`)} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 flex justify-between items-center active-scale shadow-sm">
                                                 <div>
-                                                    <h3 className="text-lg font-black text-slate-800 italic uppercase">PROMOCIÓN {y}</h3>
-                                                    <p className="text-[10px] font-bold text-emerald-600 mt-1 uppercase">Simulacro Real</p>
+                                                    <h3 className="text-lg font-black text-slate-800 italic uppercase">AÑO {y}</h3>
+                                                    <p className="text-[10px] font-bold text-emerald-600 mt-1 uppercase">Examen Original</p>
                                                 </div>
-                                                <i className="fa-solid fa-medal text-2xl text-slate-200"></i>
+                                                <i className="fa-solid fa-certificate text-2xl text-slate-200"></i>
                                             </div>
                                         ))}
                                     </div>
@@ -275,55 +297,46 @@
 
                         {view === 'config' && (
                             <div className="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-slate-50">
-                                <h3 className="text-2xl font-black text-[#043d26] mb-2 text-center uppercase italic">{selectedTarget?.name || 'Nuevo Test'}</h3>
-                                <p className="text-center text-slate-400 text-[10px] font-bold uppercase mb-10 tracking-widest tracking-widest">Configura tu sesión</p>
-                                
-                                <label className="text-[10px] font-black text-slate-300 uppercase block mb-4 ml-2">Longitud del test</label>
-                                <div className="flex gap-2 mb-10">
+                                <h3 className="text-2xl font-black text-[#043d26] mb-2 text-center uppercase italic">{selectedTarget?.name || 'Parámetros'}</h3>
+                                <div className="flex gap-2 my-10">
                                     {[10, 20, 50, 100].map(n => (
-                                        <button key={n} onClick={() => setNumQ(n)} className={`flex-1 py-5 rounded-2xl font-black text-sm transition-all ${numQ === n ? 'bg-[#043d26] text-white shadow-xl' : 'bg-slate-50 text-slate-400'}`}>{n}</button>
+                                        <button key={n} onClick={() => setNumQ(n)} className={`flex-1 py-5 rounded-2xl font-black text-sm transition-all ${numQ === n ? 'bg-[#043d26] text-white' : 'bg-slate-50 text-slate-400'}`}>{n}</button>
                                     ))}
                                 </div>
-
-                                <button onClick={() => startIATest(selectedTarget || 'Miscelánea')} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-black active-scale shadow-xl shadow-emerald-100 uppercase tracking-widest mb-4">Generar Test</button>
-                                <button onClick={() => setView('home')} className="w-full py-4 text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Volver</button>
+                                <button onClick={() => startIATest(selectedTarget || 'Miscelánea')} className="w-full bg-emerald-600 text-white py-6 rounded-3xl font-black active-scale shadow-xl uppercase tracking-widest mb-4">Generar Test</button>
+                                <button onClick={() => setView('home')} className="w-full py-4 text-[10px] font-black text-slate-300 uppercase">Cerrar</button>
                             </div>
                         )}
 
                         {view === 'quiz' && (
                             <div className="pb-20">
                                 <div className="bg-white p-8 rounded-[3.5rem] shadow-xl border border-slate-50 min-h-[520px] flex flex-col relative">
-                                    <div className="flex justify-between items-center mb-8 shrink-0">
+                                    <div className="flex justify-between items-center mb-8">
                                         <div className="flex flex-col">
-                                            <span className="text-[9px] font-black text-emerald-600 uppercase mb-1 tracking-wider">{test.source}</span>
-                                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{test.current + 1} de {test.questions.length}</span>
+                                            <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">{test.source}</span>
+                                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">{test.current + 1} / {test.questions.length}</span>
                                         </div>
-                                        <button 
-                                            onClick={() => setShowExitConfirm(true)} 
-                                            className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest active-scale"
-                                        >
-                                            Finalizar Test
-                                        </button>
+                                        <button onClick={() => setShowExitConfirm(true)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[8px] font-black uppercase tracking-widest">Finalizar Test</button>
                                     </div>
 
                                     <div className="flex-1">
                                         <h2 className="text-lg font-bold text-slate-800 mb-10 leading-snug">{test.questions[test.current]?.q}</h2>
-
                                         <div className="space-y-3">
                                             {test.questions[test.current]?.options.map((opt, i) => {
-                                                const answered = test.answers[test.current] !== undefined;
+                                                const answered = test.answers[test.current] !== undefined && test.answers[test.current] !== -1;
+                                                const blank = test.answers[test.current] === -1;
                                                 const correct = test.questions[test.current].correct;
                                                 const selected = i === test.answers[test.current];
 
                                                 let style = "bg-slate-50 border-transparent text-slate-600";
                                                 if (answered) {
-                                                    if (i === correct) style = "bg-emerald-50 border-emerald-500 text-emerald-800 scale-[1.02] shadow-lg shadow-emerald-50";
+                                                    if (i === correct) style = "bg-emerald-50 border-emerald-500 text-emerald-800 scale-[1.02] shadow-emerald-50 shadow-lg";
                                                     else if (selected) style = "bg-red-50 border-red-500 text-red-800 opacity-80";
-                                                    else style = "opacity-30 grayscale";
+                                                    else style = "opacity-30";
                                                 }
 
                                                 return (
-                                                    <button key={i} onClick={() => handleAnswer(i)} className={`w-full p-5 rounded-3xl border-2 text-left text-sm font-semibold flex gap-4 transition-all duration-300 ${style}`}>
+                                                    <button key={i} onClick={() => handleAnswer(i)} className={`w-full p-5 rounded-3xl border-2 text-left text-sm font-semibold flex gap-4 transition-all ${style}`}>
                                                         <span className={`w-7 h-7 shrink-0 rounded-xl flex items-center justify-center text-[11px] font-black ${answered && i === correct ? 'bg-emerald-500 text-white' : 'bg-white border'}`}>{String.fromCharCode(65+i)}</span>
                                                         <span className="flex-1">{opt}</span>
                                                     </button>
@@ -332,28 +345,35 @@
                                         </div>
                                     </div>
 
-                                    {test.answers[test.current] !== undefined && (
+                                    {(test.answers[test.current] !== undefined && test.answers[test.current] !== -1) && (
                                         <div className="mt-8 p-6 bg-slate-900 rounded-3xl text-white animate-in slide-in-from-bottom-4">
-                                            <div className="flex items-center gap-2 mb-3">
-                                                <i className="fa-solid fa-scale-balanced text-emerald-400 text-xs"></i>
-                                                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Jurídica y Técnica</span>
-                                            </div>
                                             <p className="text-[11px] font-medium leading-relaxed opacity-90">{test.questions[test.current].expl}</p>
+                                        </div>
+                                    )}
+
+                                    {test.answers[test.current] === -1 && (
+                                        <div className="mt-8 p-4 bg-orange-50 border border-orange-200 rounded-2xl text-orange-700 text-center">
+                                            <p className="text-[10px] font-black uppercase">Pregunta dejada en blanco</p>
                                         </div>
                                     )}
                                 </div>
 
                                 <div className="flex gap-4 mt-8">
-                                    <button onClick={() => setTest({...test, current: Math.max(0, test.current - 1)})} className="flex-1 bg-white border border-slate-200 py-6 rounded-3xl font-black text-[10px] uppercase active-scale shadow-sm">Anterior</button>
-                                    <button 
-                                        onClick={() => {
-                                            if(test.current < test.questions.length - 1) setTest({...test, current: test.current + 1});
-                                            else finalizeTest();
-                                        }}
-                                        className="flex-[2] bg-[#043d26] text-white py-6 rounded-3xl font-black text-[10px] uppercase shadow-2xl active-scale tracking-widest"
-                                    >
-                                        Siguiente Pregunta
-                                    </button>
+                                    <button onClick={() => setTest({...test, current: Math.max(0, test.current - 1)})} className="flex-1 bg-white border border-slate-200 py-6 rounded-3xl font-black text-[10px] uppercase shadow-sm active-scale">Atrás</button>
+                                    
+                                    {test.answers[test.current] === undefined ? (
+                                        <button onClick={() => handleAnswer(-1)} className="flex-[2] bg-slate-100 text-slate-400 py-6 rounded-3xl font-black text-[10px] uppercase active-scale tracking-widest">Pasar en Blanco</button>
+                                    ) : (
+                                        <button 
+                                            onClick={() => {
+                                                if(test.current < test.questions.length - 1) setTest({...test, current: test.current + 1});
+                                                else finalizeTest();
+                                            }}
+                                            className="flex-[2] bg-[#043d26] text-white py-6 rounded-3xl font-black text-[10px] uppercase shadow-2xl active-scale tracking-widest"
+                                        >
+                                            Siguiente
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -369,8 +389,12 @@
                                     </div>
                                 </div>
                                 <h2 className="text-2xl font-black text-slate-800 mb-2 uppercase italic">Resultados</h2>
-                                <p className="text-slate-400 text-xs mb-10 px-8 leading-relaxed">Resumen de tu sesión. Las preguntas falladas han sido añadidas a tu depósito de errores.</p>
-                                <button onClick={() => setView('home')} className="w-full bg-[#043d26] text-white py-6 rounded-3xl font-black shadow-2xl active-scale uppercase tracking-[0.2em]">Cerrar Resumen</button>
+                                <div className="flex justify-center gap-4 mb-10 text-[10px] font-black uppercase tracking-widest">
+                                    <div className="text-emerald-600">Bien: {Object.values(test.answers).filter((a, i) => a === test.questions[i].correct).length}</div>
+                                    <div className="text-red-500">Mal: {Object.values(test.answers).filter((a, i) => a !== -1 && a !== test.questions[i].correct).length}</div>
+                                    <div className="text-orange-400">Blanco: {Object.values(test.answers).filter(a => a === -1).length}</div>
+                                </div>
+                                <button onClick={() => setView('home')} className="w-full bg-[#043d26] text-white py-6 rounded-3xl font-black shadow-2xl active-scale uppercase tracking-widest">Volver</button>
                             </div>
                         )}
                     </main>
